@@ -12,14 +12,14 @@ simply run the following install command from a Linux shell to have a copy insta
 <a name="install-command-wget">
 
 ```
-bash <(wget -qO - https://raw.githubusercontent.com/chelios/ccloud-client/master/fetch-installer.sh) -a ccloud -u https://api.cloud.catalyst.net.nz:5000/v3
+bash <(wget -qO - https://raw.githubusercontent.com/catalyst-cloud/ccloud-client/master/fetch-installer.sh) -a ccloud -u https://api.cloud.catalyst.net.nz:5000/v3
 ```
 </a>
 
 <a name="install-command-curl">
 
 ```
-bash <(curl -s https://raw.githubusercontent.com/chelios/ccloud-client/master/fetch-installer.sh) -a ccloud -u https://api.cloud.catalyst.net.nz:5000/v3
+bash <(curl -s https://raw.githubusercontent.com/catalyst-cloud/ccloud-client/master/fetch-installer.sh) -a ccloud -u https://api.cloud.catalyst.net.nz:5000/v3
 ```
 </a>
 

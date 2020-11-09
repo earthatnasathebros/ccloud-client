@@ -7,7 +7,7 @@ CONFIG_DIR="$HOME/.config/ccloud-client/"
 CONFIG_FILE="config"
 CREDENTIALS_FILE="credentials"
 SCRIPTNAME="ccloud-client-install.sh"
-SCRIPT_URL="https://raw.githubusercontent.com/chelios/ccloud-client/master/ccloud-client-install.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/catalyst-cloud/ccloud-client/master/ccloud-client-install.sh"
 
 usage() {
   COMMAND=${0##*/}
