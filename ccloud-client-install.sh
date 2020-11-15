@@ -108,7 +108,7 @@ OS_AUTH_URL=''
 # bash shell
 
 parse_args(){
-  while getopts su: OPTION; do
+  while getopts sv: OPTION; do
     case "$OPTION" in
       s)
         MODE="shell"
