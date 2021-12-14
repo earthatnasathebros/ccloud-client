@@ -1,3 +1,10 @@
+
+</br></br>
+
+# NOTE: This project is no longer actively maintained. 
+
+</br></br>
+
 # The Ccloud client container installer script
 
 Currently this tool is optimised to work with the Catalyst Cloud, feel free to take your own copy
