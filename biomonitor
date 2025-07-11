@@ -1,0 +1,232 @@
+# ========================================
+# === CONDA + POWERSHELL SETUP + SCRIPT ===
+# ========================================
+
+$envName = "biomonitor"
+$musicFolder = "E:\Music\Hip Hop\Yelawolf\Yelawolf - Love Story\Yelawolf - Love Story\Yelawolf - Love Story"
+$pyScriptPath = "live_ecg_icp_spectrogram_filtered.py"
+
+Write-Host "🔍 Checking for conda environment: $envName..."
+$existingEnvs = conda env list | Out-String
+if ($existingEnvs -notmatch $envName) {
+    Write-Host "🛠 Creating conda environment: $envName"
+    conda create -n $envName python=3.10 -y
+} else {
+    Write-Host "✅ Conda environment $envName exists."
+}
+
+Write-Host "📦 Installing Python packages..."
+cmd /c "conda activate $envName && pip install pygame matplotlib numpy scipy"
+
+# =========================
+# === PYTHON SCRIPTING ===
+# =========================
+
+$pythonScript = @"
+import os
+import random
+import pygame
+import time
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import threading
+from scipy.signal import spectrogram, butter, lfilter
+
+# Directory with music files
+MUSIC_DIR = r'$musicFolder'
+
+def get_music_tracks(directory):
+    return [f for f in os.listdir(directory) if f.lower().endswith(('.mp3', '.wav'))]
+
+def generate_ecg_waveform():
+    # Simple synthetic ECG shape
+    t = np.linspace(0, 1, 500)
+    base = 1.2 * np.sin(2 * np.pi * 3 * t) * np.exp(-4 * t)
+    spike = np.where((0.3 < t) & (t < 0.32), 2.5, 0)
+    return base + spike
+
+def simulate_icp():
+    # Simulated ICP pressure with pulse and noise
+    base = 10
+    noise = np.random.normal(0, 2)
+    pulse = 2.5 * np.sin(time.time() * 2)
+    return max(5, min(25, base + noise + pulse))
+
+def butter_lowpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return b, a
+
+def lowpass_filter(data, cutoff=1000, fs=44100, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+class CombinedMonitor:
+    def __init__(self):
+        plt.style.use('dark_background')
+        self.fig = plt.figure(figsize=(12, 8), facecolor='black')
+
+        # Layout: top for ECG+ICP lines, bottom for spectrogram
+        gs = self.fig.add_gridspec(2, 1, height_ratios=[1, 1], hspace=0.3)
+
+        # ECG & ICP axes (top)
+        self.ax_line = self.fig.add_subplot(gs[0])
+        self.ax_line.set_facecolor('k')
+
+        self.ax_ecg = self.ax_line
+        self.ax_icp = self.ax_line.twinx()
+
+        self.ax_ecg.set_ylim(-1, 3)
+        self.ax_ecg.set_xlim(0, 2)
+        self.ax_ecg.set_ylabel('ECG Signal', color='lime')
+        self.ax_ecg.tick_params(axis='y', colors='lime')
+
+        self.ax_icp.set_ylim(0, 30)
+        self.ax_icp.set_xlim(0, 2)
+        self.ax_icp.set_ylabel('ICP Pressure (mmHg)', color='deepskyblue')
+        self.ax_icp.tick_params(axis='y', colors='deepskyblue')
+
+        self.ax_ecg.set_title('❤️ ECG & 🧠 ICP Pressure with 🎵 Audio Spectrogram', fontsize=14, color='white')
+
+        self.line_ecg, = self.ax_ecg.plot([], [], lw=2, color='lime', label='ECG')
+        self.line_icp, = self.ax_icp.plot([], [], lw=2, color='deepskyblue', label='ICP')
+
+        # Spectrogram axes (bottom)
+        self.ax_spec = self.fig.add_subplot(gs[1])
+        self.ax_spec.set_facecolor('k')
+        self.ax_spec.set_title('🎵 Live Audio Spectrogram (Low-pass <1000Hz)', fontsize=12, color='white')
+        self.ax_spec.set_ylabel('Frequency [Hz]', color='white')
+        self.ax_spec.set_xlabel('Time [s]', color='white')
+        self.ax_spec.tick_params(axis='x', colors='white')
+        self.ax_spec.tick_params(axis='y', colors='white')
+
+        # Data arrays
+        self.xdata = np.linspace(0, 2, 1000)
+        self.ydata_ecg = np.zeros(1000)
+        self.ydata_icp = np.zeros(1000)
+        self.template = generate_ecg_waveform()
+        self.template_length = len(self.template)
+        self.index = 0
+        self.running = True
+
+        # Audio buffer to hold 2 seconds at 44100 Hz
+        self.audio_buffer = np.zeros(44100 * 2)
+
+        # Animation function
+        self.ani = animation.FuncAnimation(self.fig, self.update, interval=50, blit=False)
+
+    def update(self, frame):
+        if not self.running:
+            return
+
+        # Update ECG waveform
+        self.ydata_ecg = np.roll(self.ydata_ecg, -1)
+        self.ydata_ecg[-1] = self.template[self.index % self.template_length]
+        self.index += 1
+        self.line_ecg.set_data(self.xdata, self.ydata_ecg)
+
+        # Update ICP waveform
+        self.ydata_icp = np.roll(self.ydata_icp, -1)
+        self.ydata_icp[-1] = simulate_icp()
+        self.line_icp.set_data(self.xdata, self.ydata_icp)
+
+        # Compute spectrogram from audio buffer
+        f, t_spec, Sxx = spectrogram(self.audio_buffer, fs=44100, nperseg=1024, noverlap=512)
+        Sxx_log = 10 * np.log10(Sxx + 1e-10)  # Convert to dB scale
+
+        # Clear and redraw spectrogram heatmap
+        self.ax_spec.clear()
+        self.ax_spec.set_title('🎵 Live Audio Spectrogram (Low-pass <1000Hz)', fontsize=12, color='white')
+        self.ax_spec.set_ylabel('Frequency [Hz]', color='white')
+        self.ax_spec.set_xlabel('Time [s]', color='white')
+
+        # Plot spectrogram limited to 0-1000Hz
+        max_freq = 1000
+        freq_mask = f <= max_freq
+        self.ax_spec.pcolormesh(t_spec, f[freq_mask], Sxx_log[freq_mask, :], shading='gouraud', cmap='inferno')
+        self.ax_spec.set_ylim(0, max_freq)
+
+        # Show frequency ticks below 1000 Hz every 100 Hz
+        yticks = np.arange(0, max_freq + 100, 100)
+        self.ax_spec.set_yticks(yticks)
+        self.ax_spec.set_yticklabels([f"{int(freq)} Hz" for freq in yticks])
+        self.ax_spec.tick_params(axis='x', colors='white')
+        self.ax_spec.tick_params(axis='y', colors='white')
+
+        # Reset axes limits for ECG and ICP lines to avoid drift
+        self.ax_ecg.set_xlim(0, 2)
+        self.ax_icp.set_xlim(0, 2)
+        self.ax_ecg.set_ylim(-1, 3)
+        self.ax_icp.set_ylim(0, 30)
+
+        return self.line_ecg, self.line_icp
+
+    def run(self):
+        plt.tight_layout()
+        plt.show()
+
+    def add_audio_data(self, data):
+        # Apply lowpass filter before adding
+        filtered = lowpass_filter(data, cutoff=1000, fs=44100, order=6)
+        n = len(filtered)
+        self.audio_buffer = np.roll(self.audio_buffer, -n)
+        self.audio_buffer[-n:] = filtered
+
+def play_all_tracks(tracks, monitor):
+    try:
+        pygame.mixer.init(frequency=44100, size=-16, channels=1)
+    except pygame.error as e:
+        print("⚠️ Audio init error:", e)
+        return
+
+    def player():
+        for track in tracks:
+            full_path = os.path.join(MUSIC_DIR, track)
+            print(f"▶️ Now Playing: {os.path.basename(full_path)}")
+            try:
+                pygame.mixer.music.load(full_path)
+                pygame.mixer.music.play()
+            except pygame.error as e:
+                print(f"⚠️ Failed to play {track}: {e}")
+                continue
+
+            while pygame.mixer.music.get_busy():
+                # Simulate audio data for spectrogram (simple sine + noise)
+                t = np.linspace(0, 0.05, int(44100 * 0.05), False)
+                simulated_audio = 0.5 * np.sin(2 * np.pi * 440 * t) + 0.05 * np.random.randn(len(t))
+                monitor.add_audio_data(simulated_audio.astype(np.float32))
+                time.sleep(0.05)
+
+        monitor.running = False
+
+    thread = threading.Thread(target=player)
+    thread.start()
+    monitor.run()
+    thread.join()
+    print("✅ Music & Monitoring complete.")
+
+def main():
+    print("🎵 SONAR MODE ACTIVE: Combined ECG + ICP + SPECTROGRAM with Low-pass filter <1000Hz")
+    tracks = get_music_tracks(MUSIC_DIR)
+    if not tracks:
+        print("⚠️ No tracks found.")
+        return
+    random.shuffle(tracks)
+    monitor = CombinedMonitor()
+    play_all_tracks(tracks, monitor)
+
+if __name__ == '__main__':
+    main()
+"@
+
+Set-Content -Path $pyScriptPath -Value $pythonScript -Encoding UTF8
+Write-Host "📝 Saved Python script to: $pyScriptPath"
+
+Write-Host "🚀 Running Python monitor with low-pass filter..."
+cmd /c "conda activate $envName && python $pyScriptPath"
+
+Write-Host "`n✅ Session complete. Press any key to exit..."
+[void][System.Console]::ReadKey($true)
