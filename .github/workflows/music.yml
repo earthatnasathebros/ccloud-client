@@ -1,149 +1,132 @@
-# --- General Application Configuration ---
-app_settings:
-  default_timeout_seconds: 10
-  # Sensitive data like tokens should ideally come from environment variables or a secure secret manager.
-  # In a real scenario, 'auth_token' would be a placeholder for a securely injected value.
-  # This token is now a general placeholder for any API authentication needed by the catalyst.
-  auth_token: "your_general_secure_token_here_or_from_env"
+name: Music and Bio Telemetry Simulation
 
-# --- API Endpoints Configuration ---
-api_endpoints:
-  example_api_base_url: "https://api.example.com"
-  soundcloud_profile_url: "https://api.soundcloud.com/me"
-  soundcloud_likes_url: "https://soundcloud.com/you/likes" # This is a web URL, not an API endpoint for direct data fetching
+on:
+  push:
+    branches:
+      - main
 
-# --- Specific API Tokens (for demonstration; use environment variables/secrets in production) ---
-api_tokens:
-  # This token is specifically for SoundCloud, demonstrating a dedicated token.
-  # In a real system, this value should be sourced from a secure environment variable or secret manager.
-  soundcloud_oauth_token: "fOX7yZWpaKLe8b6xsoKOyoGDs2dZxLgb"
+jobs:
+  run_simulation_dashboard:
+    runs-on: ubuntu-latest
 
-# --- Location Data (for simulation context) ---
-location_data:
-  satellite_id: "44914"
-  latitude: "-45.8788"
-  longitude: "170.5028"
-  altitude: "0"
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
 
-# --- Simulation Parameters ---
-simulation_settings:
-  fetch_interval_seconds: 3 # Interval for data fetching in seconds
-  doppler_range: 1000       # Hz, range for random Doppler shift generation
-  icp_data_file: "icp_data.txt" # File to store simulated ICP data
+      - name: Install jq for JSON parsing
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-# --- Waveform ASCII Patterns ---
-waveform_patterns:
-  ecg: "__^/‾\\__^^__/‾‾\\__^/\\___^__" # ASCII representation of ECG waveform
-  icp: "____/‾\\____/‾\\____/‾\\____/‾\\__" # ASCII representation of ICP waveform
+      - name: Fetch SoundCloud Profile (Cloud-to-Cloud)
+        env:
+          SOUNDCLOUD_PROFILE_URL: ${{ vars.SOUNDCLOUD_PROFILE_URL || 'https://api.soundcloud.com/me' }}
+          SOUNDCLOUD_LIKES_URL: ${{ vars.SOUNDCLOUD_LIKES_URL || 'https://soundcloud.com/you/likes' }}
+          SOUNDCLOUD_TOKEN: ${{ secrets.SOUNDCLOUD_TOKEN }}
+        run: |
+          echo "🎧 Fetching SoundCloud Profile..."
+          curl -s -X GET "$SOUNDCLOUD_PROFILE_URL" -H "Authorization: OAuth $SOUNDCLOUD_TOKEN" | jq '.username, .full_name, .city'
+          echo "SoundCloud Likes URL: $SOUNDCLOUD_LIKES_URL"
 
-# --- Operations to be executed by an external "catalyst" script ---
-operations:
-  - name: "fetch_example_user_data"
-    type: "command"
-    description: "Fetches user profile data from the example API. Requires 'jq'."
-    # Command uses placeholders that an external script will substitute
-    execute: "curl -s -X GET \"{{api_endpoints.example_api_base_url}}/users/me\" -H \"Authorization: Bearer {{app_settings.auth_token}}\" | jq '.username, .email'"
+      - name: Simulate Doppler Shift
+        env:
+          DOPPLER_RANGE: ${{ vars.DOPPLER_RANGE || 1000 }}
+        id: doppler_shift_step
+        run: |
+          doppler_shift=$((RANDOM % (2 * $DOPPLER_RANGE) - $DOPPLER_RANGE))
+          echo "📡 Simulated Doppler Shift: ${doppler_shift} Hz"
+          echo "doppler_shift=${doppler_shift}" >> $GITHUB_OUTPUT
 
-  - name: "fetch_soundcloud_profile"
-    type: "command"
-    description: "Fetches the authenticated user's profile data from SoundCloud using its API. Requires 'jq'."
-    # This operation demonstrates a cloud-to-cloud interaction.
-    execute: "curl -s -X GET \"{{api_endpoints.soundcloud_profile_url}}\" -H \"Authorization: OAuth {{api_tokens.soundcloud_oauth_token}}\" | jq '.username, .full_name, .city'"
+      - name: Generate Wave Effects (Single Instance)
+        env:
+          DOPPLER_SHIFT_VALUE: ${{ steps.doppler_shift_step.outputs.doppler_shift }}
+        run: |
+          doppler_shift=$DOPPLER_SHIFT_VALUE
+          wave_pattern=()
+          color_code="\033[0m"
 
-  - name: "log_custom_message"
-    type: "script"
-    description: "Logs a custom message to the console, demonstrating variable substitution."
-    execute: |
-      echo "--- Starting report generation ---"
-      echo "Processing with default timeout: {{app_settings.default_timeout_seconds}}s"
+          if (( doppler_shift > 500 )); then
+              wave_pattern=("░░░▒▒▒▓▓▓███▓▓▓▒▒▒░░░░" " ░░▒▒▓▓██████████▓▓▒▒░░")
+              color_code="\033[1;91m"
+          elif (( doppler_shift > 0 )); then
+              wave_pattern=("░░▒▒▒▒▓▓▓████▓▓▒▒▒▒░░" " ░░▒▒▓▓████████▓▓▒▒░░")
+              color_code="\033[1;93m"
+          elif (( doppler_shift > -500 )); then
+              wave_pattern=("▒▒▒▒▓▓████████████▓▓▒▒▒▒" " ░░▒▒██████████████▒▒░░")
+              color_code="\033[1;36m"
+          else
+              wave_pattern=("░░░░▒▒▒▒▓▓▓███▓▓▒▒▒▒░░░░" " ░░░░▒▒▓▓████████▓▓▒▒░░░░")
+              color_code="\033[1;34m"
+          fi
 
-  - name: "simulate_doppler_shift"
-    type: "script"
-    description: "Generates a random Doppler shift value for simulation. The output is the calculated shift in Hz."
-    execute: |
-      doppler_shift=$((RANDOM % (2 * {{simulation_settings.doppler_range}}) - {{simulation_settings.doppler_range}}))
-      echo "$doppler_shift"
+          for line in "${wave_pattern[@]}"; do
+              echo -e "${color_code}${line}\033[0m"
+          done
 
-  - name: "generate_wave_effects"
-    type: "script_template"
-    description: "Applies visual Doppler wave effects. Requires an external interpreter to pass the 'doppler_shift' value as an argument ($1) to this script template."
-    execute: |
-      # This script template generates visual wave effects based on a given Doppler shift.
-      # It expects one argument: $1 (doppler_shift).
-      local doppler_shift=$1
-      local wave=()
-      local color="\033[0m" # Reset color
+      - name: Measure ICP (Single Measurement)
+        env:
+          ICP_DATA_FILE: ${{ vars.ICP_DATA_FILE || 'icp_data.txt' }}
+        run: |
+          icp_value=$((RANDOM % 16 + 5))
+          timestamp=$(date +%s)
+          echo "$timestamp $icp_value" >> "$ICP_DATA_FILE"
+          echo "Simulated ICP value: ${icp_value} mmHg, recorded in ${ICP_DATA_FILE}"
 
-      if (( doppler_shift > 500 )); then
-          wave=("░░░▒▒▒▓▓▓███▓▓▓▒▒▒░░░░" " ░░▒▒▓▓██████████▓▓▒▒░░")
-          color="\033[1;91m" # Red for high positive shift
-      elif (( doppler_shift > 0 )); then
-          wave=("░░▒▒▒▒▓▓▓████▓▓▒▒▒▒░░" " ░░▒▒▓▓████████▓▓▒▒░░")
-          color="\033[1;93m" # Yellow for moderate positive shift
-      elif (( doppler_shift > -500 )); then
-          wave=("▒▒▒▒▓▓████████████▓▓▒▒▒▒" " ░░▒▒██████████████▒▒░░")
-          color="\033[1;36m" # Cyan for small/negative shift
-      else
-          wave=("░░░░▒▒▒▒▓▓▓███▓▓▒▒▒▒░░░░" " ░░░░▒▒▓▓████████▓▓▒▒░░░░")
-          color="\033[1;34m" # Blue for large negative shift
-      fi
+      - name: Animate ECG (Single Frame Display)
+        env:
+          ECG_WAVEFORM: ${{ vars.ECG_WAVEFORM || '__^/‾\\__^^__/‾‾\\__^/\\___^__' }}
+        run: |
+          ecg_wave="$ECG_WAVEFORM"
+          frame="${ecg_wave:0:20}"
+          echo -ne "🫀 ECG: "
+          for ((j = 0; j < ${#frame}; j++)); do
+              char="${frame:$j:1}"
+              case "$char" in
+                  "^"|"/"|"\\") echo -ne "\e[32m$char\e[0m" ;;
+                  "_") echo -ne "\e[0m$char" ;;
+                  *) echo -ne "$char" ;;
+              esac
+          done
+          echo -e ""
 
-      for line in "${wave[@]}"; do
-          echo -e "${color}${line}\033[0m" # Print wave with color and reset
-      done
+      - name: Display ICP Waveform
+        env:
+          ICP_DATA_FILE: ${{ vars.ICP_DATA_FILE || 'icp_data.txt' }}
+          ICP_WAVEFORM: ${{ vars.ICP_WAVEFORM || '____/‾\\____/‾\\____/‾\\____/‾\\__' }}
+        run: |
+          if [ -f "$ICP_DATA_FILE" ]; then
+            icp_value=$(tail -n 1 "$ICP_DATA_FILE" | awk '{print $2}')
+          else
+            icp_value="N/A"
+            echo "Warning: ICP data file '${ICP_DATA_FILE}' not found."
+          fi
 
-  - name: "measure_icp"
-    type: "script"
-    description: "Simulates an Intracranial Pressure (ICP) measurement and appends the timestamped value to the configured ICP data file."
-    execute: |
-      icp_value=$((RANDOM % 16 + 5)) # Generate random ICP value between 5 and 20 mmHg
-      timestamp=$(date +%s)         # Get current Unix timestamp
-      echo "$timestamp $icp_value" >> "{{simulation_settings.icp_data_file}}" # Append data to the ICP file
+          icp_waveform="$ICP_WAVEFORM"
+          echo -ne "📊 ICP Waveform: "
+          for ((i = 0; i < ${#icp_waveform}; i++)); do
+              char=${icp_waveform:$i:1}
+              case "$char" in
+                  "‾") echo -ne "\e[34m$char\e[0m" ;;
+                  "_") echo -ne "\e[0m$char" ;;
+                  "/"|"\\") echo -ne "\e[32m$char\e[0m" ;;
+                  *) echo -ne "$char" ;;
+              esac
+          done
+          echo -e " (Current ICP: $icp_value mmHg)"
 
-  - name: "animate_ecg"
-    type: "script_template"
-    description: "Provides a looping ASCII animation of an ECG waveform. Requires an external interpreter to handle the loop."
-    execute: |
-      # This script template animates the ECG waveform.
-      # An external interpreter would typically run this in a loop for continuous animation.
-      local ecg_wave="{{waveform_patterns.ecg}}"
-      # For a single execution, we'll just show the initial frame.
-      frame="${ecg_wave:0:20}" # Display a segment for log clarity
-      echo -ne "🫀 ECG: "
-      for ((j = 0; j < ${#frame}; j++)); do
-          char="${frame:$j:1}"
-          case "$char" in
-              "^"|"/"|"\\") echo -ne "\e[32m$char\e[0m" ;; # Green for peaks
-              "_") echo -ne "\e[0m$char" ;; # Default color for baseline
-              *) echo -ne "$char" ;; # Fallback
-          esac
-      done
-      echo -e "" # Newline after the frame
+      - name: Upload ICP Data File as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: icp-data
+          path: ${{ vars.ICP_DATA_FILE || 'icp_data.txt' }}
 
-  - name: "display_icp_waveform"
-    type: "script_template"
-    description: "Displays the ICP waveform and current value. Requires an external interpreter to pass the 'icp_value' as an argument ($1)."
-    execute: |
-      # This script template displays the ICP waveform and the current ICP value.
-      # It expects one argument: $1 (icp_value).
-      local icp_value=$1
-      local icp_waveform="{{waveform_patterns.icp}}"
-      echo -ne "📊 ICP Waveform: "
-      for ((i = 0; i < ${#icp_waveform}; i++)); do
-          char=${icp_waveform:$i:1}
-          case "$char" in
-              "‾") echo -ne "\e[34m$char\e[0m" ;; # Blue for peaks/systolic
-              "_") echo -ne "\e[0m$char" ;; # Default color for baseline/diastolic
-              "/"|"\\") echo -ne "\e[32m$char\e[0m" ;; # Green for slopes
-              *) echo -ne "$char" ;; # Fallback
-          esac
-      done
-      echo -e " (ICP: $icp_value mmHg)"
+      - name: Create Workflow Summary
+        run: |
+          doppler_shift="${{ steps.doppler_shift_step.outputs.doppler_shift }}"
+          icp_value=$(tail -n 1 ${{ vars.ICP_DATA_FILE || 'icp_data.txt' }} | awk '{print $2}')
 
-  - name: "simulate_generic_process"
-    type: "script"
-    description: "Simulates a generic long-running process."
-    execute: |
-      echo "Simulating a task..."
-      sleep 2
-      echo "Task completed."
+          echo "## 🛰️ Music and Bio Telemetry Simulation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Doppler Shift:** ${doppler_shift} Hz" >> $GITHUB_STEP_SUMMARY
+          echo "- **Last ICP Value:** ${icp_value} mmHg" >> $GITHUB_STEP_SUMMARY
+          echo "- **ECG Frame:** ${{ vars.ECG_WAVEFORM || '__^/‾\\__^^__/‾‾\\__^/\\___^__' }}" >> $GITHUB_STEP_SUMMARY
+
