@@ -1,38 +1,73 @@
-# --- Configuration ---
-api:
-  soundcloud_profile_url: "https://api.soundcloud.com/me"
-  soundcloud_likes_url: "https://soundcloud.com/you/likes" # Added based on your provided link
-  token: "fOX7yZWpaKLe8b6xsoKOyoGDs2dZxLgb" # OAuth token for API access
+# --- General Application Configuration ---
+app_settings:
+  default_timeout_seconds: 10
+  # Sensitive data like tokens should ideally come from environment variables or a secure secret manager.
+  # In a real scenario, 'auth_token' would be a placeholder for a securely injected value.
+  # This token is now a general placeholder for any API authentication needed by the catalyst.
+  auth_token: "your_general_secure_token_here_or_from_env"
 
-location:
+# --- API Endpoints Configuration ---
+api_endpoints:
+  example_api_base_url: "https://api.example.com"
+  soundcloud_profile_url: "https://api.soundcloud.com/me"
+  soundcloud_likes_url: "https://soundcloud.com/you/likes" # This is a web URL, not an API endpoint for direct data fetching
+
+# --- Specific API Tokens (for demonstration; use environment variables/secrets in production) ---
+api_tokens:
+  # This token is specifically for SoundCloud, demonstrating a dedicated token.
+  # In a real system, this value should be sourced from a secure environment variable or secret manager.
+  soundcloud_oauth_token: "fOX7yZWpaKLe8b6xsoKOyoGDs2dZxLgb"
+
+# --- Location Data (for simulation context) ---
+location_data:
   satellite_id: "44914"
   latitude: "-45.8788"
   longitude: "170.5028"
   altitude: "0"
 
-simulation:
+# --- Simulation Parameters ---
+simulation_settings:
   fetch_interval_seconds: 3 # Interval for data fetching in seconds
   doppler_range: 1000       # Hz, range for random Doppler shift generation
   icp_data_file: "icp_data.txt" # File to store simulated ICP data
 
-waveforms:
+# --- Waveform ASCII Patterns ---
+waveform_patterns:
   ecg: "__^/‾\\__^^__/‾‾\\__^/\\___^__" # ASCII representation of ECG waveform
   icp: "____/‾\\____/‾\\____/‾\\____/‾\\__" # ASCII representation of ICP waveform
 
-# --- Commands/Operations (to be interpreted and executed by an external script) ---
+# --- Operations to be executed by an external "catalyst" script ---
 operations:
+  - name: "fetch_example_user_data"
+    type: "command"
+    description: "Fetches user profile data from the example API. Requires 'jq'."
+    # Command uses placeholders that an external script will substitute
+    execute: "curl -s -X GET \"{{api_endpoints.example_api_base_url}}/users/me\" -H \"Authorization: Bearer {{app_settings.auth_token}}\" | jq '.username, .email'"
+
   - name: "fetch_soundcloud_profile"
-    command: "curl -s -X GET \"{{api.soundcloud_profile_url}}\" -H \"Authorization: OAuth {{api.token}}\" | jq '.username, .full_name, .city'"
-    description: "Fetches the authenticated user's profile data from SoundCloud using the configured API URL and token. Requires 'jq' for JSON parsing."
+    type: "command"
+    description: "Fetches the authenticated user's profile data from SoundCloud using its API. Requires 'jq'."
+    # This operation demonstrates a cloud-to-cloud interaction.
+    execute: "curl -s -X GET \"{{api_endpoints.soundcloud_profile_url}}\" -H \"Authorization: OAuth {{api_tokens.soundcloud_oauth_token}}\" | jq '.username, .full_name, .city'"
+
+  - name: "log_custom_message"
+    type: "script"
+    description: "Logs a custom message to the console, demonstrating variable substitution."
+    execute: |
+      echo "--- Starting report generation ---"
+      echo "Processing with default timeout: {{app_settings.default_timeout_seconds}}s"
 
   - name: "simulate_doppler_shift"
-    script: |
-      doppler_shift=$((RANDOM % (2 * {{simulation.doppler_range}}) - {{simulation.doppler_range}}))
+    type: "script"
+    description: "Generates a random Doppler shift value for simulation. The output is the calculated shift in Hz."
+    execute: |
+      doppler_shift=$((RANDOM % (2 * {{simulation_settings.doppler_range}}) - {{simulation_settings.doppler_range}}))
       echo "$doppler_shift"
-    description: "Generates a random Doppler shift value within the specified range for simulation purposes. The output is the calculated shift in Hz."
 
   - name: "generate_wave_effects"
-    script_template: |
+    type: "script_template"
+    description: "Applies visual Doppler wave effects. Requires an external interpreter to pass the 'doppler_shift' value as an argument ($1) to this script template."
+    execute: |
       # This script template generates visual wave effects based on a given Doppler shift.
       # It expects one argument: $1 (doppler_shift).
       local doppler_shift=$1
@@ -44,7 +79,7 @@ operations:
           color="\033[1;91m" # Red for high positive shift
       elif (( doppler_shift > 0 )); then
           wave=("░░▒▒▒▒▓▓▓████▓▓▒▒▒▒░░" " ░░▒▒▓▓████████▓▓▒▒░░")
-          color="\033[1;93m" # Yellow for moderate positive shift (Correction from original script's inconsistency)
+          color="\033[1;93m" # Yellow for moderate positive shift
       elif (( doppler_shift > -500 )); then
           wave=("▒▒▒▒▓▓████████████▓▓▒▒▒▒" " ░░▒▒██████████████▒▒░░")
           color="\033[1;36m" # Cyan for small/negative shift
@@ -56,50 +91,59 @@ operations:
       for line in "${wave[@]}"; do
           echo -e "${color}${line}\033[0m" # Print wave with color and reset
       done
-    description: "Applies visual Doppler wave effects. Requires an external interpreter to pass the 'doppler_shift' value as an argument ($1) to this script."
 
   - name: "measure_icp"
-    script: |
+    type: "script"
+    description: "Simulates an Intracranial Pressure (ICP) measurement and appends the timestamped value to the configured ICP data file."
+    execute: |
       icp_value=$((RANDOM % 16 + 5)) # Generate random ICP value between 5 and 20 mmHg
       timestamp=$(date +%s)         # Get current Unix timestamp
-      echo "$timestamp $icp_value" >> "{{simulation.icp_data_file}}" # Append data to the ICP file
-    description: "Simulates an Intracranial Pressure (ICP) measurement and appends the timestamped value to the configured ICP data file."
+      echo "$timestamp $icp_value" >> "{{simulation_settings.icp_data_file}}" # Append data to the ICP file
 
   - name: "animate_ecg"
-    script_template: |
-      # This script template animates the ECG waveform in a loop.
-      local ecg_wave="{{waveforms.ecg}}"
-      for ((i = 0; i < ${#ecg_wave}; i++)); do
-          frame="${ecg_wave:$i}${ecg_wave:0:$i}" # Create a rotating frame for animation
-          echo -ne "🫀 ECG: " # Print heart emoji and label
-          for ((j = 0; j < ${#frame}; j++)); do
-              char="${frame:$j:1}"
-              case "$char" in
-                  "^"|"/"|"\\") echo -ne "\e[32m$char\e[0m" ;; # Green for peaks
-                  "_") echo -ne "\e[0m$char" ;; # Default color for baseline
-                  *) echo -ne "$char" ;; # Any other character (should not occur with current waveform)
-              esac
-          done
-          echo -e "\r" # Carriage return to overwrite the same line
-          # sleep 0.2 # Removed sleep as it should be handled by the external interpreter for main loop
+    type: "script_template"
+    description: "Provides a looping ASCII animation of an ECG waveform. Requires an external interpreter to handle the loop."
+    execute: |
+      # This script template animates the ECG waveform.
+      # An external interpreter would typically run this in a loop for continuous animation.
+      local ecg_wave="{{waveform_patterns.ecg}}"
+      # For a single execution, we'll just show the initial frame.
+      frame="${ecg_wave:0:20}" # Display a segment for log clarity
+      echo -ne "🫀 ECG: "
+      for ((j = 0; j < ${#frame}; j++)); do
+          char="${frame:$j:1}"
+          case "$char" in
+              "^"|"/"|"\\") echo -ne "\e[32m$char\e[0m" ;; # Green for peaks
+              "_") echo -ne "\e[0m$char" ;; # Default color for baseline
+              *) echo -ne "$char" ;; # Fallback
+          esac
       done
-    description: "Provides a looping ASCII animation of an ECG (Electrocardiogram) waveform with color highlights. Intended for continuous display."
+      echo -e "" # Newline after the frame
 
   - name: "display_icp_waveform"
-    script_template: |
+    type: "script_template"
+    description: "Displays the ICP waveform and current value. Requires an external interpreter to pass the 'icp_value' as an argument ($1)."
+    execute: |
       # This script template displays the ICP waveform and the current ICP value.
       # It expects one argument: $1 (icp_value).
       local icp_value=$1
-      local icp_waveform="{{waveforms.icp}}"
-      echo -ne "📊 ICP Waveform: " # Print chart emoji and label
+      local icp_waveform="{{waveform_patterns.icp}}"
+      echo -ne "📊 ICP Waveform: "
       for ((i = 0; i < ${#icp_waveform}; i++)); do
           char=${icp_waveform:$i:1}
           case "$char" in
               "‾") echo -ne "\e[34m$char\e[0m" ;; # Blue for peaks/systolic
               "_") echo -ne "\e[0m$char" ;; # Default color for baseline/diastolic
               "/"|"\\") echo -ne "\e[32m$char\e[0m" ;; # Green for slopes
-              *) echo -ne "$char" ;; # Any other character
+              *) echo -ne "$char" ;; # Fallback
           esac
       done
-      echo -e " (ICP: $icp_value mmHg)" # Display the current ICP value
-    description: "Displays a static ASCII representation of an ICP (Intracranial Pressure) waveform with color highlights, alongside the current ICP measurement. Requires an external interpreter to pass the 'icp_value' as an argument ($1)."
+      echo -e " (ICP: $icp_value mmHg)"
+
+  - name: "simulate_generic_process"
+    type: "script"
+    description: "Simulates a generic long-running process."
+    execute: |
+      echo "Simulating a task..."
+      sleep 2
+      echo "Task completed."
