@@ -1,0 +1,98 @@
+# --- Configuration ---
+api:
+  url: "https://api.soundcloud.com/me"
+  token: "fOX7yZWpaKLe8b6xsoKOyoGDs2dZxLgb"
+
+location:
+  satellite_id: "44914"
+  latitude: "-45.8788"
+  longitude: "170.5028"
+  altitude: "0"
+
+simulation:
+  fetch_interval_seconds: 3
+  doppler_range: 1000 # Hz
+  icp_data_file: "icp_data.txt"
+
+waveforms:
+  ecg: "__^/‾\\__^^__/‾‾\\__^/\\___^__"
+  icp: "____/‾\\____/‾\\____/‾\\____/‾\\__"
+
+# --- Commands/Operations (to be interpreted by an external script) ---
+operations:
+  - name: "fetch_soundcloud_profile"
+    command: "curl -s -X GET \"{{api.url}}\" -H \"Authorization: OAuth {{api.token}}\" | jq '.username, .full_name, .city'"
+    description: "Fetches user profile data from SoundCloud."
+
+  - name: "simulate_doppler_shift"
+    script: |
+      doppler_shift=$((RANDOM % (2 * {{simulation.doppler_range}}) - {{simulation.doppler_range}}))
+      echo "$doppler_shift"
+    description: "Generates a random Doppler shift value."
+
+  - name: "generate_wave_effects"
+    script_template: |
+      local doppler_shift=$1
+      local wave=()
+      local color="\033[0m"
+
+      if (( doppler_shift > 500 )); then
+          wave=("░░░▒▒▒▓▓▓███▓▓▓▒▒▒░░░░" " ░░▒▒▓▓██████████▓▓▒▒░░")
+          color="\033[1;91m"
+      elif (( doppler_shift > 0 )); then
+          wave=("░░▒▒▒▒▓▓▓████▓▓▒▒▒▒░░" " ░░▒▒▓▓████████▓▓▒▒░░")
+          color="\033[1;36m" # Corrected from original script's inconsistency, assuming 1;36m for positive
+      elif (( doppler_shift > -500 )); then
+          wave=("▒▒▒▒▓▓████████████▓▓▒▒▒▒" " ░░▒▒██████████████▒▒░░")
+          color="\033[1;36m"
+      else
+          wave=("░░░░▒▒▒▒▓▓▓███▓▓▒▒▒▒░░░░" " ░░░░▒▒▓▓████████▓▓▒▒░░░░")
+          color="\033[1;34m"
+      fi
+
+      for line in "${wave[@]}"; do
+          echo -e "${color}${line}\033[0m"
+      done
+    description: "Applies visual effects based on Doppler shift, requires a 'doppler_shift' argument."
+
+  - name: "measure_icp"
+    script: |
+      icp_value=$((RANDOM % 16 + 5))
+      timestamp=$(date +%s)
+      echo "$timestamp $icp_value" >> "{{simulation.icp_data_file}}"
+    description: "Simulates an ICP measurement and appends to file."
+
+  - name: "animate_ecg"
+    script_template: |
+      local ecg_wave="{{waveforms.ecg}}"
+      for ((i = 0; i < ${#ecg_wave}; i++)); do
+          frame="${ecg_wave:$i}${ecg_wave:0:$i}"
+          echo -ne "🫀 ECG: "
+          for ((j = 0; j < ${#frame}; j++)); do
+              char="${frame:$j:1}"
+              case "$char" in
+                  "^"|"/"|"\\") echo -ne "\e[32m$char\e[0m" ;;
+                  "_") echo -ne "\e[0m$char" ;;
+                  *) echo -ne "$char" ;;
+              esac
+          done
+          echo -e "\r"
+      done
+    description: "Animates the ECG waveform."
+
+  - name: "display_icp_waveform"
+    script_template: |
+      local icp_value=$1
+      local icp_waveform="{{waveforms.icp}}"
+      echo -ne "📊 ICP Waveform: "
+      for ((i = 0; i < ${#icp_waveform}; i++)); do
+          char=${icp_waveform:$i:1}
+          case "$char" in
+              "‾") echo -ne "\e[34m$char\e[0m" ;;
+              "_") echo -ne "\e[0m$char" ;;
+              "/"|"\\") echo -ne "\e[32m$char\e[0m" ;;
+              *) echo -ne "$char" ;;
+          esac
+      done
+      echo -e " (ICP: $icp_value mmHg)"
+    description: "Displays the ICP waveform, requires an 'icp_value' argument."
