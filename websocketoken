@@ -1,0 +1,9 @@
+const signalingChannel = new WebSocket('wss://api.soundcloud.com/realtime?token=fOX7yZWpaKLe8b6xsoKOyoGDs2dZxLgb');
+
+signalingChannel.onopen = () => {
+  console.log('WebSocket connection opened.');
+};
+
+signalingChannel.onmessage = (event) => {
+  console.log('Received:', event.data);
+};
